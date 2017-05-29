@@ -50,17 +50,14 @@ func setAuthEndpoint(router *gin.Engine, clientID string) {
 
 func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) {
 	router.GET("/auth/callback", func(c *gin.Context) {
-		authorizationCode, exists := c.Get("code")
-		if !exists {
-			panic("No authorization code in the callback request")
-		}
+		authorizationCode := c.Request.Form.Get("code")
 
 		form := url.Values{}
 		form.Add("grant_type", "authorization_code")
 		form.Add("client_id", clientID)
 		form.Add("client_secret", clientSecret)
 		form.Add("redirect_uri", "https://google.com")
-		form.Add("code", authorizationCode.(string))
+		form.Add("code", authorizationCode)
 
 		req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
 		if err != nil {
