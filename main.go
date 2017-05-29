@@ -50,7 +50,7 @@ func setAuthEndpoint(router *gin.Engine, clientID string) {
 
 func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) {
 	router.GET("/auth/callback", func(c *gin.Context) {
-		authorizationCode, exists := c.Get("authorization_code")
+		authorizationCode, exists := c.Get("code")
 		if !exists {
 			panic("No authorization code in the callback request")
 		}
