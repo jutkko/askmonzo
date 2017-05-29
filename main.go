@@ -50,13 +50,18 @@ func setAuthEndpoint(router *gin.Engine, clientID string) {
 
 func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) {
 	router.GET("/auth/callback", func(c *gin.Context) {
+		err := c.Request.ParseForm()
+		if err != nil {
+			panic("Failed to parse form")
+		}
+
 		authorizationCode := c.Request.Form.Get("code")
 
 		form := url.Values{}
 		form.Add("grant_type", "authorization_code")
 		form.Add("client_id", clientID)
 		form.Add("client_secret", clientSecret)
-		form.Add("redirect_uri", "https://google.com")
+		form.Add("redirect_uri", "https://"+c.Request.Host+"/auth/callback")
 		form.Add("code", authorizationCode)
 
 		req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
@@ -73,10 +78,12 @@ func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) 
 		}
 
 		defer resp.Body.Close()
+		// TODO please check for error
 		respBody, _ := ioutil.ReadAll(resp.Body)
 
-		fmt.Println(resp.Status)
-		fmt.Println(string(respBody))
+		c.JSON(resp.StatusCode, gin.H{
+			"message": string(respBody),
+		})
 	})
 }
 
