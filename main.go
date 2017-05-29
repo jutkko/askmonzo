@@ -42,7 +42,7 @@ func setAuthEndpoint(router *gin.Engine, clientID string) {
 		link := url.URL{
 			Scheme:   "https",
 			Host:     "auth.getmondo.co.uk",
-			RawQuery: "client_id=" + clientID + "&redirect_uri=" + c.Request.Host + "/auth/callback&response_type=code",
+			RawQuery: "client_id=" + clientID + "&redirect_uri=https://" + c.Request.Host + "/auth/callback&response_type=code",
 		}
 		c.Redirect(http.StatusTemporaryRedirect, link.String())
 	})
