@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -29,6 +30,15 @@ func main() {
 	router.Run(":" + port)
 }
 
+type Response struct {
+	AccessToken  string `json:"access_token,string"`
+	ClientID     string `json:"client_id,string"`
+	ExpiresIn    int    `json:"expires_in,int"`
+	RefreshToken string `json:"refresh_token,string"`
+	TokenType    string `json:"token_type,string"`
+	UserID       string `json:"user_id,string"`
+}
+
 func setPingEndpoint(router *gin.Engine) {
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -55,6 +65,8 @@ func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) 
 			panic("Failed to parse form")
 		}
 
+		client := &http.Client{}
+
 		authorizationCode := c.Request.Form.Get("code")
 
 		form := url.Values{}
@@ -70,20 +82,26 @@ func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) 
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Println("Error when sending request to the server")
-			return
+			panic("Failed to create a new request")
 		}
 
 		defer resp.Body.Close()
-		// TODO please check for error
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			panic("Failed to create a new request")
+		}
 
+		// There is expiry time, how to deal with it?
 		c.JSON(resp.StatusCode, gin.H{
 			"message": string(respBody),
 		})
+
+		response := &Response{}
+		json.Unmarshal(respBody, &response)
+
+		fmt.Printf("Message: %#+v\n", response.AccessToken)
 	})
 }
 
