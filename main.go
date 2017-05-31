@@ -73,7 +73,7 @@ func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) 
 		form.Add("grant_type", "authorization_code")
 		form.Add("client_id", clientID)
 		form.Add("client_secret", clientSecret)
-		form.Add("redirect_uri", "https://"+c.Request.Host+"/auth/callback")
+		form.Add("redirect_uri", "https://pure-oasis-86979.herokuapp.com/auth/callback")
 		form.Add("code", authorizationCode)
 
 		req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
