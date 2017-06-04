@@ -12,54 +12,57 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func main() {
-	router := gin.Default()
+type Response struct {
+	AccessToken  string `json:"access_token"`
+	ClientID     string `json:"client_id"`
+	ExpiresIn    int    `json:"expires_in,int"`
+	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
+	UserID       string `json:"user_id"`
+}
 
-	// Set the environment variables
-	clientID := getEnv("CLIENT_ID")
-	clientSecret := getEnv("CLIENT_SECRET")
+func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	setPingEndpoint(router)
-	setAuthEndpoint(router, clientID)
-	setAuthCallbackEndpoint(router, clientID, clientSecret)
-
-	router.Run(":" + port)
+	newServer().Run(":" + port)
 }
 
-type Response struct {
-	AccessToken  string `json:"access_token,string"`
-	ClientID     string `json:"client_id,string"`
-	ExpiresIn    int    `json:"expires_in,int"`
-	RefreshToken string `json:"refresh_token,string"`
-	TokenType    string `json:"token_type,string"`
-	UserID       string `json:"user_id,string"`
+func newServer() *gin.Engine {
+	router := gin.Default()
+
+	// Set the environment variables
+	clientID := getEnv("CLIENT_ID")
+	clientSecret := getEnv("CLIENT_SECRET")
+
+	router.GET("/ping", pingHandler)
+	router.GET("/auth", authHandlerWrapper(clientID))
+	router.GET("/auth/callback", setAuthCallbackEndpointWrapper(clientID, clientSecret))
+
+	return router
 }
 
-func setPingEndpoint(router *gin.Engine) {
-	router.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
+func pingHandler(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"message": "pong",
 	})
 }
 
-func setAuthEndpoint(router *gin.Engine, clientID string) {
-	router.GET("/auth", func(c *gin.Context) {
+func authHandlerWrapper(clientID string) func(c *gin.Context) {
+	return func(c *gin.Context) {
 		link := url.URL{
 			Scheme:   "https",
 			Host:     "auth.getmondo.co.uk",
 			RawQuery: "client_id=" + clientID + "&redirect_uri=https://" + c.Request.Host + "/auth/callback&response_type=code",
 		}
 		c.Redirect(http.StatusTemporaryRedirect, link.String())
-	})
+	}
 }
 
-func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) {
-	router.GET("/auth/callback", func(c *gin.Context) {
+func setAuthCallbackEndpointWrapper(clientID, clientSecret string) func(c *gin.Context) {
+	return func(c *gin.Context) {
 		err := c.Request.ParseForm()
 		if err != nil {
 			panic("Failed to parse form")
@@ -93,16 +96,33 @@ func setAuthCallbackEndpoint(router *gin.Engine, clientID, clientSecret string) 
 			panic("Failed to create a new request")
 		}
 
-		// There is expiry time, how to deal with it?
+		var response Response
+		err = json.Unmarshal(respBody, &response)
+		if err != nil {
+			panic("Failed to unmarshal the response" + err.Error())
+		}
+
+		req, err = http.NewRequest("GET", "https://api.monzo.com/ping/whoami", nil)
+		if err != nil {
+			panic("Failed to create a new request")
+		}
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", response.AccessToken))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp1, err := client.Do(req)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to create a new request", err))
+		}
+
+		respBody, err = ioutil.ReadAll(resp1.Body)
+		if err != nil {
+			panic("Failed to create a new request")
+		}
+
 		c.JSON(resp.StatusCode, gin.H{
 			"message": string(respBody),
 		})
-
-		response := &Response{}
-		json.Unmarshal(respBody, &response)
-
-		fmt.Printf("Message: %#+v\n", response.AccessToken)
-	})
+	}
 }
 
 func getEnv(v string) string {
