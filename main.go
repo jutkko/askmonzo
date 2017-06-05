@@ -71,7 +71,7 @@ func authHandlerWrapper(clientID string) func(c *gin.Context) {
 		link := url.URL{
 			Scheme:   "https",
 			Host:     "auth.getmondo.co.uk",
-			RawQuery: "client_id=" + clientID + "&redirect_uri=" + c.Request.Host + "/auth/callback&response_type=code&state=" + state,
+			RawQuery: "client_id=" + clientID + "&redirect_uri=https://" + c.Request.Host + "/auth/callback&response_type=code&state=" + state,
 		}
 		c.Redirect(http.StatusTemporaryRedirect, link.String())
 	}
@@ -131,7 +131,7 @@ func setAuthCallbackEndpointWrapper(clientID, clientSecret string) func(c *gin.C
 				form.Add("grant_type", "authorization_code")
 				form.Add("client_id", clientID)
 				form.Add("client_secret", clientSecret)
-				form.Add("redirect_uri", c.Request.Host+"/auth/callback")
+				form.Add("redirect_uri", "https://"+c.Request.Host+"/auth/callback")
 				form.Add("code", authorizationCode)
 
 				req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
