@@ -80,81 +80,53 @@ func authHandlerWrapper(clientID string) func(c *gin.Context) {
 func setAuthCallbackEndpointWrapper(clientID, clientSecret string) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		client := &http.Client{}
-		var resp *http.Response
 		var err error
 
 		if authResponse.AuthExpiryTimestamp <= time.Now().Unix() {
+			fmt.Printf("Token expired\n")
+
 			if authResponse.RefreshToken != "" {
-				form := url.Values{}
-				form.Add("grant_type", "refresh_token")
-				form.Add("client_id", clientID)
-				form.Add("client_secret", clientSecret)
-				form.Add("refresh_token", authResponse.RefreshToken)
-
-				req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
-				if err != nil {
-					panic("Failed to create a new request")
-				}
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-				resp, err = client.Do(req)
-				if err != nil {
-					panic("Failed to create a new request")
+				fmt.Printf("Refreshing token\n")
+				formData := map[string]string{
+					"grant_type":    "refresh_token",
+					"client_id":     clientID,
+					"client_secret": clientSecret,
+					"refresh_token": authResponse.RefreshToken,
 				}
 
-				defer resp.Body.Close()
-				respBody, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					panic("Failed to create a new request")
-				}
-
-				err = json.Unmarshal(respBody, &authResponse)
-				if err != nil {
-					panic("Failed to unmarshal the response" + err.Error())
-				}
+				err = getAuthenticationToken(client, formData)
 			} else {
-				err := c.Request.ParseForm()
+				err = c.Request.ParseForm()
 				if err != nil {
-					panic("Failed to parse form")
+					c.JSON(http.StatusBadRequest, gin.H{
+						"Error": "Failed to parse form, what are you trying to do",
+					})
+					return
 				}
 
 				authorizationCode := c.Request.Form.Get("code")
 				monzoState := c.Request.Form.Get("state")
 				if monzoState != state {
-					c.JSON(404, gin.H{
+					c.JSON(http.StatusNotFound, gin.H{
 						"Error": "The state does not match, what are you trying to do",
 					})
 					return
 				}
 
-				form := url.Values{}
-				form.Add("grant_type", "authorization_code")
-				form.Add("client_id", clientID)
-				form.Add("client_secret", clientSecret)
-				form.Add("redirect_uri", "https://"+c.Request.Host+"/auth/callback")
-				form.Add("code", authorizationCode)
-
-				req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
-				if err != nil {
-					panic("Failed to create a new request")
-				}
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-				resp, err = client.Do(req)
-				if err != nil {
-					panic("Failed to create a new request")
+				formData := map[string]string{
+					"grant_type":    "authorization_code",
+					"client_id":     clientID,
+					"client_secret": clientSecret,
+					"redirect_uri":  "https://" + c.Request.Host + "/auth/callback",
+					"code":          authorizationCode,
 				}
 
-				defer resp.Body.Close()
-				respBody, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					panic("Failed to create a new request")
-				}
+				err = getAuthenticationToken(client, formData)
+			}
 
-				err = json.Unmarshal(respBody, &authResponse)
-				if err != nil {
-					panic("Failed to unmarshal the response" + err.Error())
-				}
+			if err != nil {
+				c.JSON(http.StatusBadRequest, err.Error())
+				return
 			}
 
 			authResponse.AuthExpiryTimestamp = time.Now().Unix() + int64(authResponse.ExpiresIn)
@@ -162,33 +134,34 @@ func setAuthCallbackEndpointWrapper(clientID, clientSecret string) func(c *gin.C
 
 		req, err := http.NewRequest("GET", "https://api.monzo.com/ping/whoami", nil)
 		if err != nil {
-			panic("Failed to create a new request")
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
 		}
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authResponse.AccessToken))
 		req.Header.Set("Content-Type", "application/json")
 
 		resp1, err := client.Do(req)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to create a new request", err))
+			c.JSON(http.StatusBadRequest, err.Error())
+			return
 		}
 
 		respBody, err := ioutil.ReadAll(resp1.Body)
 		if err != nil {
-			panic("Failed to create a new request")
+			c.JSON(http.StatusBadRequest, err.Error())
+			return
 		}
 
 		var bearerResponse BearerResponse
 		err = json.Unmarshal(respBody, &bearerResponse)
 		if err != nil {
-			panic("Failed to unmarshal the response" + err.Error())
+			c.JSON(http.StatusBadRequest, err.Error())
+			return
 		}
 
 		c.JSON(resp1.StatusCode, gin.H{
 			"message": "authentication successful",
 		})
-
-		// Successful exchange
-
 	}
 }
 
@@ -205,4 +178,31 @@ func getRandomString() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	number := r.Int63()
 	return strconv.FormatInt(number, 10)
+}
+
+func getAuthenticationToken(client *http.Client, formData map[string]string) error {
+	form := url.Values{}
+	for k, v := range formData {
+		form.Add(k, v)
+	}
+
+	req, err := http.NewRequest("POST", "https://api.monzo.com/oauth2/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(respBody, &authResponse)
+	return err
 }
